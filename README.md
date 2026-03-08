@@ -33,7 +33,7 @@ Most modern media servers (Jellyfin, Plex, Kodi) now expect `ell` and may fail t
 1. Open **Settings → User Scripts → Add New Script**
 2. Give it a name (e.g. `srt rename gre to ell`)
 3. Click the gear icon → **Edit Script**
-4. Paste the script from the [Script](#script) section below
+4. Download [`srt_rename_gre_to_ell.sh`](./srt_rename_gre_to_ell.sh) and paste its contents
 5. Edit the **User Configuration** block at the top to match your setup
 6. Save
 
@@ -107,17 +107,6 @@ If the output looks correct, remove `--dry-run` and run again.
 ## Output
 
 ![Script log output](unraid-srt-lang-rename/assets/log_output.png)
-```
-
-**Επιλογή 2 (καλύτερη δομή):** Μετακίνησε όλα τα αρχεία από τον φάκελο `unraid-srt-lang-rename/` στη ρίζα του repo, ώστε να έχεις:
-```
-repo root/
-├── assets/
-│   └── log_output.png
-├── README.md
-└── LICENSE
-
----
 
 ## Notes
 
