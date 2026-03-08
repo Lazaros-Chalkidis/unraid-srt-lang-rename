@@ -23,7 +23,7 @@ Most modern media servers (Jellyfin, Plex, Kodi) now expect `ell` and may fail t
 
 ## Requirements
 
-- Unraid 6.x or later
+- Unraid 7.2.x or later
 - [User Scripts](https://forums.unraid.net/topic/48286-plugin-user-scripts/) plugin (available via Community Applications)
 
 ---
@@ -106,7 +106,16 @@ If the output looks correct, remove `--dry-run` and run again.
 
 ## Output
 
-![Script log output](assets/log_output.png)
+![Script log output](unraid-srt-lang-rename/assets/log_output.png)
+```
+
+**Επιλογή 2 (καλύτερη δομή):** Μετακίνησε όλα τα αρχεία από τον φάκελο `unraid-srt-lang-rename/` στη ρίζα του repo, ώστε να έχεις:
+```
+repo root/
+├── assets/
+│   └── log_output.png
+├── README.md
+└── LICENSE
 
 ---
 
