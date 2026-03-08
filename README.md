@@ -347,4 +347,6 @@ exit 0
 
 ## License
 
-MIT
+This project is licensed under the **MIT License** — you are free to use, copy, modify, merge, publish, distribute, and sublicense this software for any purpose, with or without modification, as long as the original copyright notice is retained.
+
+See the [LICENSE](./LICENSE) file for the full license text.
