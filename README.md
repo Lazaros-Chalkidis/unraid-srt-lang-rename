@@ -8,6 +8,8 @@ Movie.2020.gre.srt  →  Movie.2020.ell.srt
 
 Most modern media servers (Jellyfin, Plex, Kodi) now expect `ell` and may fail to detect Greek subtitles tagged with the deprecated `gre` code.
 
+- The script can be adapted for other language code migrations (e.g. `iw` → `he`, `heb` → `he`)
+
 ---
 
 ## Features
@@ -114,7 +116,6 @@ If the output looks correct, remove `--dry-run` and run again.
 - If a `.ell.srt` already exists at the destination, the file is **skipped** (use `--force` to override)
 - The `STATE` and `SUCCESS_MARK` files are only updated if the run completes with **zero errors**
 - Logs are written to both the log file and Unraid's syslog (`logger -t srt-rename`)
-- The script can be adapted for other language code migrations (e.g. `iw` → `he`, `heb` → `he`)
 
 ---
 
