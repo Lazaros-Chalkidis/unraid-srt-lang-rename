@@ -1,342 +1,163 @@
-# Unraid srt lang rename
+# unraid-srt-lang-rename
 
-Batch-rename subtitle files to correct ISO 639 language codes on Unraid (gre → ell, and more)
+Renames Greek subtitle files from the deprecated `gre` code to `ell` on Unraid.
 
 ```
-Movie.2020.gre.srt  →  Movie.2020.ell.srt
+Movie.2020.gre.srt  ->  Movie.2020.ell.srt
 ```
 
-Most modern media servers (Jellyfin, Plex, Kodi) now expect `ell` and may fail to detect Greek subtitles tagged with the deprecated `gre` code.
+Plex, Jellyfin and Kodi expect ISO 639-2/T `ell`. Files tagged `gre` are either ignored or show up as an unnamed track that has to be picked by hand. On a library of any size that is not something you fix manually.
 
-- The script can be adapted for other language code migrations (e.g. `iw` → `he`, `heb` → `he`)
+The same script can be retargeted at other language code migrations. See [Other language codes](#other-language-codes).
 
----
+## How it works
 
-## Features
+The script walks each volume under `/mnt` separately, finds `*.gre.srt` and renames every match to `*.ell.srt`. Matching is case insensitive, so `.GRE.SRT` and `.Gre.Srt` are handled as well.
 
-- 🔍 **Full & incremental scan** — scan everything or only files changed since last run
-- 🧪 **Dry-run mode** — preview renames before committing
-- 💤 **Low resource usage** — runs at reduced CPU and I/O priority (`renice`/`ionice`)
-- 📋 **Detailed logging** — to file and Unraid syslog, with periodic heartbeat progress
-- 🔁 **Log rotation** — automatically trims the log file to a configurable line limit
-- 🛡️ **Safe defaults** — skips existing destinations, skips `.Recycle.Bin`, only updates state on clean runs
+Scanning per volume rather than through `/mnt/user` is deliberate. shfs adds real overhead on a large tree, and a single continuous walk over a big library can inflate the dentry cache far enough to trip Unraid's memory notification. Several shorter walks do not.
 
----
+There is also no `/mnt/user0` fallback. That mount point is deprecated and may be removed in a future Unraid release. Worse, an empty share stub left behind on the array is enough to make an auto-detecting script scan an empty directory and report a clean run while doing nothing at all. Scripts that pick `BASE` automatically are prone to this. This one does not.
 
 ## Requirements
 
-- Unraid 7.2.x or later
-- [User Scripts](https://forums.unraid.net/topic/48286-plugin-user-scripts/) plugin (available via Community Applications)
+Unraid 7.x with the [User Scripts](https://forums.unraid.net/topic/48286-plugin-user-scripts/) plugin from Community Applications. Tested on 7.3.2. Nothing in it is version specific.
 
----
+## Install
 
-## Installation
+1. Settings, User Scripts, Add New Script
+2. Give it a name, for example `srt rename gre to ell`
+3. Gear icon, Edit Script, paste the contents of [`srt_rename_gre_to_ell.sh`](./srt_rename_gre_to_ell.sh)
+4. Adjust the settings at the top of the script
+5. Save
 
-1. Open **Settings → User Scripts → Add New Script**
-2. Give it a name (e.g. `srt rename gre to ell`)
-3. Click the gear icon → **Edit Script**
-4. Download [`srt_rename_gre_to_ell.sh`](./srt_rename_gre_to_ell.sh) and paste its contents
-5. Edit the **User Configuration** block at the top to match your setup
-6. Save
+## Settings
 
----
+Near the top of the script:
 
-## Configuration
-
-All user-facing settings are grouped in a clearly marked block near the top of the script:
-
-```bash
-# ============================================================
-# USER CONFIGURATION — edit these to match your setup
-# ============================================================
-
-BASE="/mnt/user"
-[[ -d "/mnt/user0/Media" ]] && BASE="/mnt/user0"
-
-ROOTS=(
-  "$BASE/Media/Movies"
-  "$BASE/Media/TV Shows"
-)
-
-LOG="/mnt/user/appdata/srt_rename_gre_to_ell.log"
-STATE="/mnt/user/appdata/srt_rename_gre_to_ell.last_run"
-SUCCESS_MARK="/mnt/user/appdata/srt_rename_gre_to_ell.last_success"
-
-LOG_MAX_LINES=5000
-HEARTBEAT_SECS=60
-```
-
-### Variable reference
-
-| Variable | Default | Description |
+| Variable | Default | What it does |
 |---|---|---|
-| `BASE` | `/mnt/user` (auto-detected) | Root of your Unraid array. Auto-switches to `/mnt/user0` if present. Override manually if needed. |
-| `ROOTS` | `Movies`, `TV Shows` | Array of media folders to scan. Add or remove paths to match your library. |
-| `LOG` | `/mnt/user/appdata/srt_rename_gre_to_ell.log` | Path to the log file. |
-| `STATE` | `/mnt/user/appdata/srt_rename_gre_to_ell.last_run` | Timestamp file used by incremental mode. |
-| `SUCCESS_MARK` | `/mnt/user/appdata/srt_rename_gre_to_ell.last_success` | Marker file updated only on clean (zero-error) runs. |
-| `LOG_MAX_LINES` | `5000` | Log file is trimmed to this many lines at the start of each run. |
-| `HEARTBEAT_SECS` | `60` | How often (seconds) a progress line is written to the log during long scans. |
+| `MNT` | `/mnt` | Where volumes are mounted. Leave alone unless your setup is unusual. |
+| `SUBROOTS` | `Media/Movies`, `Media/TV Shows` | Paths to look for inside each volume. A volume is scanned only if at least one of these exists in it. |
+| `VOL_SKIP` | `user user0 disks remotes addons rootshare` | Entries under `/mnt` that are not real storage. |
+| `LOG` | `/mnt/user/appdata/srt_rename_gre_to_ell.log` | Log file. |
+| `STATE` | `..._gre_to_ell.last_run` | Timestamp used by incremental mode. |
+| `SUCCESS_MARK` | `..._gre_to_ell.last_success` | Touched only on a clean run. |
+| `LOG_MAX_LINES` | `5000` | Log is trimmed to this at the start of every run. |
+| `HEARTBEAT_SECS` | `60` | Progress line interval during long scans. |
 
----
+`/mnt/cache` is intentionally not in `VOL_SKIP`, so files still sitting on cache before the mover runs get picked up.
 
-## Usage
+## Flags
 
-### Script Arguments (User Scripts UI)
-
-Set these in the **Script Arguments** field, or append them when calling the script manually:
-
-| Flag | Description |
+| Flag | What it does |
 |---|---|
-| `--dry-run` | Preview only — no files are renamed. **Always run this first.** |
-| `--force` | Rename even if a `.ell.srt` already exists at the destination. |
-| `--full` | Full scan mode (default). |
-| `--inc` | Incremental mode — only scan files newer than the last successful run. |
-| `--wake` | Wake all array disks before scanning (default: enabled). |
+| `--dry-run` | Show what would happen, change nothing. Run this first. |
+| `--full` | Scan everything. This is the default. |
+| `--inc` | Only files newer than the last successful run. |
+| `--force` | Rename even when the `.ell.srt` target already exists, overwriting it. |
+| `--dedupe` | See below. |
+| `--drop-caches` | Drop dentries and inodes between volumes. Only worth using on a low memory server. |
+| `--wake`, `--nowake` | Accepted and ignored. Kept so older scheduled entries do not fail. |
 
-### Recommended first run
+`--dedupe` and `--force` refuse to run together. One deletes the source, the other overwrites the target.
 
-Set **Script Arguments** to `--dry-run`, run the script, then check the log:
+The **Run Script** button in User Scripts does not pass arguments. Put them in the Script Arguments field, or call the script from a terminal:
 
-```bash
-tail -f /mnt/user/appdata/srt_rename_gre_to_ell.log
+```
+bash "/boot/config/plugins/user.scripts/scripts/srt rename gre to ell/script" --dry-run
 ```
 
-If the output looks correct, remove `--dry-run` and run again.
+## Dedupe
 
----
+If something in the stack re-creates a `.gre.srt` after the script has already renamed it, both files end up sitting side by side. Normal runs skip these forever, so they accumulate quietly and never show up as an error.
 
-## Output
+`--dedupe` deletes the `.gre.srt` only when `cmp -s` confirms it is byte for byte identical to the `.ell.srt` next to it. If the two differ, both are kept and the file is logged as `DIFFER` for manual review.
 
-![Script log output](unraid-srt-lang-rename/assets/log_output.png)
+Dry run first:
 
-## Notes
-
-- The script **skips `.Recycle.Bin`** folders automatically
-- If a `.ell.srt` already exists at the destination, the file is **skipped** (use `--force` to override)
-- The `STATE` and `SUCCESS_MARK` files are only updated if the run completes with **zero errors**
-- Logs are written to both the log file and Unraid's syslog (`logger -t srt-rename`)
-
----
-
-## Script
-
-```bash
-#!/bin/bash
-set -euo pipefail
-IFS=$'\n\t'
-
-renice -n 15 -p $$ >/dev/null 2>&1 || true
-ionice -c2 -n7 -p $$ >/dev/null 2>&1 || true
-
-echo "=== STARTING SRT RENAME: .gre.srt -> .ell.srt ==="
-
-# ============================================================
-# USER CONFIGURATION — edit these to match your setup
-# ============================================================
-
-BASE="/mnt/user"
-[[ -d "/mnt/user0/Media" ]] && BASE="/mnt/user0"
-
-ROOTS=(
-  "$BASE/Media/Movies"
-  "$BASE/Media/TV Shows"
-)
-
-LOG="/mnt/user/appdata/srt_rename_gre_to_ell.log"
-STATE="/mnt/user/appdata/srt_rename_gre_to_ell.last_run"
-SUCCESS_MARK="/mnt/user/appdata/srt_rename_gre_to_ell.last_success"
-
-LOG_MAX_LINES=5000
-HEARTBEAT_SECS=60
-
-# ============================================================
-# END OF USER CONFIGURATION
-# ============================================================
-
-DRY_RUN=0
-FORCE=0
-FULL=1
-WAKE_DISKS=1
-
-while [[ $# -gt 0 ]]; do
-  arg="${1//$'\r'/}"
-  case "$arg" in
-    "") shift ;;
-    --dry-run) DRY_RUN=1; shift ;;
-    --force)   FORCE=1; shift ;;
-    --full)    FULL=1; shift ;;
-    --inc)     FULL=0; shift ;;
-    --wake)    WAKE_DISKS=1; shift ;;
-    *) echo "Unknown option: [$(printf '%q' "$arg")]"; exit 1 ;;
-  esac
-done
-
-mkdir -p "$(dirname "$LOG")"
-
-if [[ -f "$LOG" ]]; then
-  tmp_log="$(mktemp)"
-  tail -n "$LOG_MAX_LINES" "$LOG" > "$tmp_log" && mv "$tmp_log" "$LOG"
-fi
-
-fmt_secs() {
-  local s="$1"
-  printf "%02d:%02d:%02d" $((s/3600)) $(((s%3600)/60)) $((s%60))
-}
-
-log() {
-  local msg="$1"
-  local ts
-  ts="$(date '+%F %T')"
-  echo "[$ts] $msg" | tee -a "$LOG"
-  logger -t srt-rename "$msg" 2>/dev/null || true
-}
-
-missing=0
-log "Using BASE: $BASE"
-for r in "${ROOTS[@]}"; do
-  if [[ ! -d "$r" ]]; then
-    log "ERROR: root not found: $r"
-    missing=1
-  else
-    log "OK: root exists: $r"
-  fi
-done
-if [[ $missing -eq 1 ]]; then
-  log "ABORT: Fix ROOTS and rerun."
-  exit 1
-fi
-
-START_TS="$(date +%s)"
-CURRENT_ROOT="(none)"
-LAST_FILE="(none)"
-LAST_BEAT_TS="$START_TS"
-
-found=0 renamed=0 skipped=0 errors=0
-
-beat() {
-  local now elapsed
-  now="$(date +%s)"
-  elapsed=$((now - START_TS))
-  log "HEARTBEAT | elapsed=$(fmt_secs "$elapsed") | root=\"$CURRENT_ROOT\" | found=$found renamed=$renamed skipped=$skipped errors=$errors | last=\"$LAST_FILE\""
-  LAST_BEAT_TS="$now"
-}
-
-wake_all_disks() {
-  log "Waking ALL array disks (/mnt/disk*) ..."
-  shopt -s nullglob
-  for d in /mnt/disk*; do
-    [[ -d "$d" ]] || continue
-    ls -1 "$d" >/dev/null 2>&1 || true
-  done
-  shopt -u nullglob
-  log "Disk wake pass done."
-}
-
-process_one() {
-  local file="$1"
-  found=$(( found + 1 ))
-  LAST_FILE="$file"
-
-  local new_file
-  new_file="$(printf '%s' "$file" | sed -E 's/\.gre\.srt$/.ell.srt/')"
-
-  if [[ "$new_file" == "$file" ]]; then
-    skipped=$(( skipped + 1 ))
-    return
-  fi
-
-  if [[ -e "$new_file" && $FORCE -eq 0 ]]; then
-    skipped=$(( skipped + 1 ))
-    log "SKIP (target exists): $file -> $new_file"
-    return
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    renamed=$(( renamed + 1 ))
-    log "[DRY-RUN] Would rename: $file -> $new_file"
-    return
-  fi
-
-  if mv -- "$file" "$new_file"; then
-    renamed=$(( renamed + 1 ))
-    log "Renamed: $file -> $new_file"
-  else
-    errors=$(( errors + 1 ))
-    log "ERROR renaming: $file"
-  fi
-}
-
-log "---- RUN START ----"
-log "Roots: ${ROOTS[*]}"
-log "Mode: FULL=$FULL | DRY_RUN=$DRY_RUN | FORCE=$FORCE | Wake=$WAKE_DISKS | Heartbeat=${HEARTBEAT_SECS}s"
-
-if [[ $WAKE_DISKS -eq 1 ]]; then
-  wake_all_disks
-fi
-
-if [[ $FULL -eq 0 ]]; then
-  if [[ -f "$STATE" ]]; then
-    log "Incremental since: $(date -r "$STATE")"
-  else
-    log "Incremental since: (none) -> first run will behave like full for matches"
-  fi
-else
-  log "FULL scan mode"
-fi
-
-beat
-
-for root in "${ROOTS[@]}"; do
-  CURRENT_ROOT="$root"
-  log "Scanning: $root"
-
-  if [[ $FULL -eq 0 && -f "$STATE" ]]; then
-    while IFS= read -r -d '' file; do
-      now="$(date +%s)"
-      if (( now - LAST_BEAT_TS >= HEARTBEAT_SECS )); then
-        beat
-      fi
-      process_one "$file"
-    done < <(find "$root" \( -type d -name ".Recycle.Bin" -prune \) -o \
-      \( -type f -iname "*.gre.srt" -newer "$STATE" -print0 \))
-  else
-    while IFS= read -r -d '' file; do
-      now="$(date +%s)"
-      if (( now - LAST_BEAT_TS >= HEARTBEAT_SECS )); then
-        beat
-      fi
-      process_one "$file"
-    done < <(find "$root" \( -type d -name ".Recycle.Bin" -prune \) -o \
-      \( -type f -iname "*.gre.srt" -print0 \))
-  fi
-
-  beat
-  log "Finished root: $root"
-done
-
-END_TS="$(date +%s)"
-TOTAL_SECS=$((END_TS - START_TS))
-
-log "=== DONE ==="
-log "TOTAL: Found=$found | Renamed=$renamed | Skipped=$skipped | Errors=$errors | Duration=$(fmt_secs "$TOTAL_SECS")"
-
-if [[ $DRY_RUN -eq 0 && $errors -eq 0 ]]; then
-  touch "$STATE"
-  touch "$SUCCESS_MARK"
-  log "State updated: $STATE"
-  log "Success marker updated: $SUCCESS_MARK"
-else
-  log "State NOT updated (dry-run or errors present)"
-fi
-
-exit 0
+```
+bash /path/to/script --dedupe --dry-run
 ```
 
----
+This is a cleanup pass, not something to schedule. It does not touch the state file.
+
+Worth saying plainly: dedupe treats the symptom. If duplicates keep coming back, find whatever writes them and fix it there.
+
+## Safety
+
+- `.Recycle.Bin` directories are pruned
+- Nothing is overwritten without `--force`
+- Nothing is deleted without a byte comparison first
+- If no volume contains any of the `SUBROOTS`, the script aborts before scanning instead of reporting a successful run over nothing
+- Every rename stays inside a single volume, so this never moves files between a user share path and a disk share path
+- `renice` and `ionice` keep it out of the way of active streams
+
+## Log output
+
+Written to the log file and to syslog under the `srt-rename` tag.
+
+```
+[2026-01-01 04:00:01] Volumes with content: 6
+[2026-01-01 04:00:01] Scanning: /mnt/pool_a/Media/TV Shows
+[2026-01-01 04:00:01] Renamed: /mnt/pool_a/Media/TV Shows/Show/Season 01/Show - S01E01.gre.srt -> /mnt/pool_a/Media/TV Shows/Show/Season 01/Show - S01E01.ell.srt
+[2026-01-01 04:00:01] Finished volume: /mnt/pool_a | found=1 renamed=1 deleted=0
+[2026-01-01 04:00:02] TOTAL: Found=1 | Renamed=1 | Deleted=0 | Differ=0 | Skipped=0 | Errors=0 | Duration=00:00:01
+```
+
+## Other language codes
+
+The suffixes are not parameterised, but retargeting is three small edits.
+
+**1. The find pattern.** In `scan_dir`, both branches:
+
+```bash
+\( -type f -iname "*.gre.srt" -print0 \)
+```
+
+**2. The suffix test.** In `process_one`, the number is the character count of the source suffix including both dots:
+
+```bash
+local tail8="${file: -8}"
+if [[ "${tail8,,}" != ".gre.srt" ]]; then
+```
+
+**3. The replacement.** Same number again, followed by the new suffix:
+
+```bash
+local new_file="${file:0:${#file}-8}.ell.srt"
+```
+
+Both numbers must match the source suffix length. The target suffix does not have to be the same length as the source.
+
+Worked examples:
+
+| Migration | Source suffix | Length | Target suffix |
+|---|---|---|---|
+| `gre` to `ell` | `.gre.srt` | 8 | `.ell.srt` |
+| `heb` to `he` | `.heb.srt` | 8 | `.he.srt` |
+| `iw` to `he` | `.iw.srt` | 7 | `.he.srt` |
+| `fre` to `fra` | `.fre.srt` | 8 | `.fra.srt` |
+| `ger` to `deu` | `.ger.srt` | 8 | `.deu.srt` |
+
+For `iw` to `he` the three edits become:
+
+```bash
+\( -type f -iname "*.iw.srt" -print0 \)
+
+local tail8="${file: -7}"
+if [[ "${tail8,,}" != ".iw.srt" ]]; then
+
+local new_file="${file:0:${#file}-7}.he.srt"
+```
+
+The variable is still called `tail8`, which is now a lie. Rename it if that bothers you.
+
+Other subtitle extensions work the same way. For `.ass` or `.sub`, change the extension in all three places and recount the length.
+
+Cosmetic but worth doing at the same time: the banner `echo` at the top, the `LOG`, `STATE` and `SUCCESS_MARK` filenames, and the `logger -t srt-rename` tag all still say `gre` to `ell`.
+
+Always run `--dry-run` after retargeting.
 
 ## License
 
-This project is licensed under the **MIT License** — you are free to use, copy, modify, merge, publish, distribute, and sublicense this software for any purpose, with or without modification, as long as the original copyright notice is retained.
-
-See the [LICENSE](./LICENSE) file for the full license text.
+MIT. See [LICENSE](./LICENSE).
